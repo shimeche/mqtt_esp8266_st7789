@@ -24,6 +24,75 @@ PubSubClient mqttClient(client);
 int targetValue = 0;
 int currentValue = 0;
 
+unsigned long lastHeartbeatTime = 0;
+const unsigned long heartbeatInterval = 60000;  // 心跳間隔為5秒
+
+const char* deviceHeartbeatTopic = "heartbeat";
+
+void setup()
+{
+    Serial.begin(9600);
+
+    tft.init(240, 240, SPI_MODE2);
+
+    // pinMode(BLK_PIN, OUTPUT);
+
+    // if the screen is flipped, remove this command
+    tft.setRotation(2);
+    delay(1000);
+
+    printString("Hi~");
+    setupWiFi();
+
+    mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+    mqttClient.setCallback(callback);
+}
+
+void setupWiFi() {
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        printString("connecting to wi-fi..");
+    }
+
+    printString("Connected to Wi-Fi");
+}
+
+void loop()
+{
+    if (!mqttClient.connected()) {
+        reconnect();
+    }
+
+    mqttClient.loop();
+
+    // 檢查是否需要發送心跳訊息
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastHeartbeatTime >= heartbeatInterval) {
+        sendHeartbeat();
+        lastHeartbeatTime = currentMillis;
+    }
+}
+
+void sendHeartbeat() {
+  if (mqttClient.connected()) {
+    mqttClient.publish(deviceHeartbeatTopic, "Heartbeat");
+  }
+}
+
+
+void reconnect() {
+    while (!mqttClient.connected()) {
+        if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASSWORD )) {
+            printString("Connected to MQTT broker");
+            mqttClient.subscribe(TOPIC);
+        } else {
+            delay(500);
+            printString(".");
+        }
+    }
+}
+
 void callback(char* topic, byte* payload, unsigned int length)
 {
     analogWrite(BLK_PIN, 100);
@@ -37,7 +106,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     // } else {
       printString(String(payloadchar));
     // }
-    
+
     delay(5000);
     analogWrite(BLK_PIN, 0);
     tft.fillScreen(ST77XX_BLACK);
@@ -46,48 +115,6 @@ void callback(char* topic, byte* payload, unsigned int length)
 bool isNumeric(char* payload) {
     int value = atoi(payload);
     return value != 0 || strcmp(payload, "0") == 0;
-}
-
-void setup()
-{
-    Serial.begin(9600);
-
-    tft.init(240, 240, SPI_MODE2);
-
-    // pinMode(BLK_PIN, OUTPUT);
-    
-    // if the screen is flipped, remove this command
-    tft.setRotation(2);
-    delay(1000);
-
-    printString("Hi~");
-
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        printString(".");
-    }
-
-    printString("Connected to Wi-Fi");
-
-    mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-    mqttClient.setCallback(callback);
-
-    while (!client.connected()) {
-        if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASSWORD )) {
-            printString("Connected to MQTT broker");
-        } else {
-            delay(500);
-            printString(".");
-        }
-    }
-
-    mqttClient.subscribe(TOPIC);
-}
-
-void loop()
-{
-    mqttClient.loop();
 }
 
 void printString(String text) {
